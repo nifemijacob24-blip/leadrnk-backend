@@ -11,6 +11,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+
+const cors = require('cors');
+
+
+// Allow your Vercel frontend to talk to this backend
+app.use(cors({
+    origin: ['https://www.leadrnk.com', 'http://localhost:5173'], // Add your exact Vercel URL here
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
+
+app.use(express.json());
+// ... rest of your server code
+
 // Initialize Clients
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });

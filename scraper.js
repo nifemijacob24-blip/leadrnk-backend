@@ -6,12 +6,33 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const { createClient } = require('@supabase/supabase-js');
 const Parser = require('rss-parser');
 
+// 1. Safe Supabase Init
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    console.error("❌ CRITICAL: Missing Supabase Environment Variables!");
+}
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+// 2. Safe OpenAI Init
+if (!process.env.OPENAI_API_KEY) {
+    console.error("❌ CRITICAL: Missing OpenAI API Key!");
+}
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 const parser = new Parser();
 
+// 3. Safe Proxy Init (Prevents the crash!)
 const PROXY_URL = process.env.PROXY_URL;
-const httpsAgent = new HttpsProxyAgent(PROXY_URL);
+let httpsAgent = null;
+
+if (PROXY_URL) {
+    try {
+        httpsAgent = new HttpsProxyAgent(PROXY_URL);
+    } catch (e) {
+        console.error("❌ CRITICAL: PROXY_URL is invalid. Check your DigitalOcean formatting.");
+    }
+} else {
+    console.error("❌ CRITICAL: PROXY_URL is missing from Environment Variables!");
+}
 
 const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
@@ -25,7 +46,7 @@ async function fetchWithRetry(url, maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const response = await axios.get(url, {
-                httpsAgent: httpsAgent,
+                httpsAgent: httpsAgent ? httpsAgent : undefined, // <-- Update this line
                 headers: headers,
                 timeout: 20000 
             });
