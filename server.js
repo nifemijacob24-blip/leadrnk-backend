@@ -8,11 +8,8 @@ const axios = require('axios');
 const Parser = require('rss-parser');
 
 const app = express();
-app.use(cors());
+
 app.use(express.json());
-
-
-const cors = require('cors');
 
 
 // Allow your Vercel frontend to talk to this backend
