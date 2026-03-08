@@ -329,7 +329,7 @@ app.post('/api/generate-reply', async (req, res) => {
 
         // 4. Call OpenAI (Using gpt-4o for high-quality, human-like writing)
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o", 
+            model: "gpt-4.1-mini", 
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7, 
         });
@@ -361,7 +361,7 @@ app.post('/api/summarize-post', async (req, res) => {
         `;
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o", 
+            model: "gpt-4.1-mini", 
             messages: [{ role: "user", content: prompt }],
             temperature: 0.3, 
         });
@@ -377,6 +377,7 @@ app.post('/api/summarize-post', async (req, res) => {
 });
 
 // --- GUMROAD WEBHOOK (Ping) ---
+// --- GUMROAD WEBHOOK (Ping) ---
 app.post('/api/webhook/gumroad', async (req, res) => {
     console.log("\n====================================");
     console.log("🔔 GUMROAD WEBHOOK HIT!");
@@ -384,12 +385,12 @@ app.post('/api/webhook/gumroad', async (req, res) => {
     console.log("====================================\n");
 
     try {
-        // 🚨 SAFETY NET: If the body is completely empty, default to an empty object so it doesn't crash!
         const payload = req.body || {};
         
-        // Catch test ping 
-        if (payload.test === 'true' || payload.test === true) {
-            console.log("🟢 SUCCESS: Gumroad Test Ping confirmed!");
+        // 🚨 THE FIX: Only stop early if it's a test ping AND there is no email attached.
+        // If there is an email, it means it is a Test Checkout, and we SHOULD update the database!
+        if ((payload.test === 'true' || payload.test === true) && !payload.email) {
+            console.log("🟢 SUCCESS: Gumroad Test Ping (from Settings) confirmed!");
             return res.status(200).send('OK');
         }
         
@@ -413,6 +414,7 @@ app.post('/api/webhook/gumroad', async (req, res) => {
             console.log(`🛑 Subscription cancelled/failed for: ${userEmail}`);
         } 
         else if (userEmail) { 
+            // It's a purchase! (Gumroad sends price in cents. 3900 = $39)
             const planBought = parseInt(payload.price) >= 3900 ? 'growth' : 'freelancer'; 
             
             try {
@@ -421,7 +423,7 @@ app.post('/api/webhook/gumroad', async (req, res) => {
                 } else {
                      await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('email', userEmail);
                 }
-                console.log(`✅ Subscription active for: ${userEmail} (${planBought} plan)`);
+                console.log(`✅ Subscription active for: ${userEmail} (${planBought} plan) [Test Mode: ${payload.test || false}]`);
             } catch (dbError) {
                 console.error("❌ SUPABASE ERROR updating user:", dbError.message);
             }

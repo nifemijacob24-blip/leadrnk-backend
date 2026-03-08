@@ -343,7 +343,7 @@ async function scanReddit() {
                                                 await resend.emails.send({
                                                     from: 'Jacob from leadrnk <alerts@leadrnk.com>', // MUST be a verified domain in Resend
                                                     to: profile.email,
-                                                    subject: `Reddit Lead (r/${sub}): ${cleanTitle}`,
+                                                    subject: `Reddit Lead Found For ${profile.agency.domain}`,
                                                     text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://leadrnk.vercel.app/dashboard\n\n- Leadrnk Automation`,
                                                 });
                                                 console.log(`📧 Email alert sent to ${profile.email}`);
