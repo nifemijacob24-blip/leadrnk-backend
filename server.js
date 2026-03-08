@@ -11,16 +11,12 @@ const app = express();
 
 app.use(express.json());
 
-
 // Allow your Vercel frontend to talk to this backend
 app.use(cors({
     origin: ['https://www.leadrnk.com', 'http://localhost:5173'], // Add your exact Vercel URL here
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
 }));
-
-app.use(express.json());
-// ... rest of your server code
 
 // Initialize Clients
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -260,6 +256,7 @@ app.post('/api/generate-trackers', async (req, res) => {
 });
 
 // --- GENERATE REDDIT COMMENT ROUTE ---
+// --- GENERATE REDDIT COMMENT ROUTE ---
 app.post('/api/generate-reply', async (req, res) => {
     const { userId, leadId, leadTitle, leadBody } = req.body;
 
@@ -275,9 +272,41 @@ app.post('/api/generate-reply', async (req, res) => {
             return res.status(404).json({ error: 'Agency profile not found' });
         }
 
-        // 2. The "Soft-Sell" Reddit Prompt
+        // 2. LIVE SCRAPE THEIR WEBSITE FOR PERFECT CONTEXT
+        let scrapedContext = "No extended website context available.";
+        if (agency.domain) {
+            try {
+                const targetUrl = agency.domain.startsWith('http') ? agency.domain : `https://${agency.domain}`;
+                const siteResponse = await axios.get(targetUrl, { 
+                    timeout: 10000, // 10 second timeout so the user isn't waiting forever
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Connection': 'keep-alive'
+                    }
+                });
+                
+                const $ = cheerio.load(siteResponse.data);
+                scrapedContext = `
+                    Website Title: ${$('title').text().trim()}
+                    Website Features/Copy: ${$('p, h1, h2, h3').slice(0, 10).text().replace(/\s+/g, ' ').substring(0, 1000)}
+                `;
+                console.log(`✅ Scraped context from ${agency.domain} for AI Reply`);
+            } catch (scrapeErr) {
+                console.log(`⚠️ Could not scrape ${agency.domain} for reply. Reason: ${scrapeErr.message}`);
+            }
+        }
+
+        // 3. The "Soft-Sell" Reddit Prompt (Now with Website Context!)
         const prompt = `
             You are a highly respected, veteran user on Reddit. You are also an expert at: "${agency.description}".
+            
+            Here is exact context from your agency's website so you know exactly what services you offer:
+            START WEBSITE CONTEXT
+            ${scrapedContext}
+            END WEBSITE CONTEXT
             
             A Reddit user just posted this:
             Title: "${leadTitle}"
@@ -286,22 +315,21 @@ app.post('/api/generate-reply', async (req, res) => {
             Write a highly valuable, thoughtful Reddit comment in response. 
             
             CRITICAL RULES:
-            1. NEVER greet tackle the question striaght away or use "hey there"
+            1. NEVER greet tackle the question straight away or use "hey there"
             2. Tone: Be casual, conversational, and helpful. Use formatting like short paragraphs or bullet points if needed. Do NOT sound corporate or salesy. 
             3. Value First: Provide 1 or 2 pieces of actual, actionable advice related to their specific problem.
-            4. The "Soft Flex": Subtly weave in your expertise. Use a phrase similar to "In my experience running an agency in this space..." or "We recently helped a client with this exact issue...".
+            4. The "Soft Flex": Subtly weave in your expertise based on the WEBSITE CONTEXT above. Use a phrase similar to "In my experience running an agency in this space..." or "We recently helped a client with this exact issue...".
             5. No Hard Selling: Do NOT tell them to DM you. Do NOT tell them to visit your website. End the comment with an open-ended question to start a conversation, or a simple "Hope this helps!".
             6. Length: Keep it between 3 to 5 short paragraphs.
-            
             
             Return ONLY the raw text of the comment. Do not use quotes or markdown code blocks.
         `;
 
-        // 3. Call OpenAI (Using gpt-4o for high-quality, human-like writing)
+        // 4. Call OpenAI (Using gpt-4o for high-quality, human-like writing)
         const completion = await openai.chat.completions.create({
             model: "gpt-4o", 
             messages: [{ role: "user", content: prompt }],
-            temperature: 0.7, // Add a little creativity so it doesn't sound robotic
+            temperature: 0.7, 
         });
 
         const generatedReply = completion.choices[0].message.content.trim();
@@ -313,6 +341,39 @@ app.post('/api/generate-reply', async (req, res) => {
         res.status(500).json({ error: 'Failed to generate reply' });
     }
 });
+
+// --- SUMMARIZE REDDIT POST ROUTE ---
+app.post('/api/summarize-post', async (req, res) => {
+    const { leadTitle, leadBody } = req.body;
+
+    try {
+        const prompt = `
+            You are an AI assistant helping an agency owner quickly review a Reddit lead.
+            Read the following Reddit post and summarize it in exactly 2 short, concise sentences.
+            Focus entirely on the user's core problem/pain point and what type of solution or service they are looking for.
+            
+            Title: "${leadTitle}"
+            Body: "${leadBody}"
+            
+            Provide ONLY the raw summary text. No quotes or intro phrases.
+        `;
+
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o", 
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.3, 
+        });
+
+        const generatedSummary = completion.choices[0].message.content.trim();
+
+        res.json({ success: true, summary: generatedSummary });
+
+    } catch (err) {
+        console.error('Summary Generation Error:', err);
+        res.status(500).json({ error: 'Failed to generate summary' });
+    }
+});
+
 // --- FLUTTERWAVE WEBHOOK (Recurring Billing) ---
 app.post('/api/webhook/flutterwave', async (req, res) => {
     // 1. Verify the request actually came from Flutterwave
@@ -351,7 +412,6 @@ app.post('/api/webhook/flutterwave', async (req, res) => {
     res.status(200).end(); 
 });
 
-// --- CANCEL SUBSCRIPTION ROUTE ---
 // --- CANCEL SUBSCRIPTION ROUTE (Fully Automated) ---
 app.post('/api/cancel-subscription', async (req, res) => {
     // We now expect the frontend to pass the user's email too

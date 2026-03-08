@@ -7,6 +7,104 @@ const { createClient } = require('@supabase/supabase-js');
 const Parser = require('rss-parser');
 const { Resend } = require('resend');
 
+// --- YOUR MASTER CURATED SUBREDDIT LIST ---
+// Add your 100 researched subreddits here. Do not include 'r/'.
+const GLOBAL_SUBREDDITS = [
+    'advertising',
+    'agency',
+    'agencygrowthhacks',
+    'askmarketing',
+    'askuaebusiness',
+    'aws',
+    'blogging',
+    'business',
+    'business_ideas',
+    'coldemail',
+    'content_marketing',
+    'contentmarketing',
+    'customersuccess',
+    'devops',
+    'digital_marketing',
+    'digitalmarketing',
+    'digitalmarketinghack',
+    'dropship',
+    'dropshipping',
+    'ecommerce',
+    'ecommercemarketing',
+    'emailmarketing',
+    'emailmarketingnow',
+    'entrepreneur',
+    'entrepreneurridealong',
+    'entrepreneurs',
+    'entrepreneurship',
+    'facebookads',
+    'facebookadvertising',
+    'flutterdev',
+    'freelancing',
+    'freeloopkits',
+    'golang',
+    'googleads',
+    'googleadwords',
+    'growthhacking',
+    'indiehackers',
+    'instructionaldesign',
+    'java',
+    'javascript',
+    'journalism',
+    'journalismjobs',
+    'kotlin',
+    'kubernetes',
+    'ladybusiness',
+    'leadgeneration',
+    'learnjavascript',
+    'legalmarketing',
+    'marketing',
+    'marketing_design',
+    'marketinghelp',
+    'microsaas',
+    'nextjs',
+    'node',
+    'nonprofit',
+    'nonprofit_jobs',
+    'nonprofit_marketing',
+    'nonprofittech',
+    'postgresql',
+    'ppc',
+    'ppcjobs',
+    'publicrelations',
+    'react',
+    'reactjs',
+    'reactnative',
+    'saas',
+    'saasmarketing',
+    'sales',
+    'salesdevelopment',
+    'salesengineers',
+    'salesoperations',
+    'salestechniques',
+    'seo',
+    'seo_digital_marketing',
+    'shopifyecommerce',
+    'sideproject',
+    'sideprojects',
+    'sideprojectwins',
+    'small_business_ideas',
+    'smallbusiness',
+    'socialmedia',
+    'socialmediamanagers',
+    'socialmediamarketing',
+    'sre',
+    'startups',
+    'supabase',
+    'sweatystartup',
+    'techsales',
+    'techsalesjobs',
+    'terraform',
+    'typescript',
+    'webdev',
+    'ycombinator'
+];
+
 // Initialize Resend
 if (!process.env.RESEND_API_KEY) {
     console.error("❌ CRITICAL: Missing Resend API Key!");
@@ -27,7 +125,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const parser = new Parser();
 
-// 3. Safe Proxy Init (Prevents the crash!)
+// 3. Safe Proxy Init
 const PROXY_URL = process.env.PROXY_URL;
 let httpsAgent = null;
 
@@ -53,7 +151,7 @@ async function fetchWithRetry(url, maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const response = await axios.get(url, {
-                httpsAgent: httpsAgent ? httpsAgent : undefined, // <-- Update this line
+                httpsAgent: httpsAgent ? httpsAgent : undefined,
                 headers: headers,
                 timeout: 20000 
             });
@@ -107,7 +205,7 @@ async function scorePostForUser(title, text, agency) {
 }
 
 async function scanReddit() {
-    console.log('\nStarting Sublurker RSS Scanner (Proxy + Parallel Batching)...');
+    console.log('\nStarting Sublurker RSS Scanner (Global Subreddits + Custom Keywords)...');
     
     try {
         const { data: trackers, error: trackersError } = await supabase.from('trackers').select('*');
@@ -122,40 +220,30 @@ async function scanReddit() {
         
         // FILTER OUT EXPIRED USERS TO SAVE OPENAI CREDITS
         const activeAgencies = agencies.filter(agency => {
-            if (agency.is_paid) return true; // Paid users always get scraped
-            if (agency.trial_ends_at && new Date(agency.trial_ends_at) > now) return true; // Active trials get scraped
-            return false; // Expired and unpaid? Cut them off.
+            if (agency.is_paid) return true; 
+            if (agency.trial_ends_at && new Date(agency.trial_ends_at) > now) return true; 
+            return false; 
         });
 
+        // Setup Profiles
         activeAgencies.forEach(agency => {
             userProfiles.set(agency.id, {
                 agency: agency,
-                subreddits: [],
                 keywords: [],
-                trackerIds: {} ,
-                webhookUrl: agency.webhook_url // <-- ADD THIS LINE
+                trackerIds: {}, 
+                webhookUrl: agency.webhook_url,
+                email: agency.email // MAKE SURE 'email' EXISTS IN YOUR AGENCIES TABLE!
             });
         });
 
-        const globalSubredditsToScrape = new Set();
-        const globalKeywordsToScrape = new Set();
-
+        // Map ONLY keywords to users
         trackers.forEach(t => {
             const profile = userProfiles.get(t.user_id);
-            if (!profile) return;
+            if (!profile || !t.keyword) return;
 
-            if (t.subreddit) {
-                const cleanSub = t.subreddit.toLowerCase().replace('r/', '').trim();
-                profile.subreddits.push(cleanSub);
-                globalSubredditsToScrape.add(cleanSub);
-                profile.trackerIds[`sub_${cleanSub}`] = t.id;
-            }
-            if (t.keyword) {
-                const cleanKey = t.keyword.toLowerCase().trim();
-                profile.keywords.push(cleanKey);
-                globalKeywordsToScrape.add(cleanKey);
-                profile.trackerIds[`kw_${cleanKey}`] = t.id;
-            }
+            const cleanKey = t.keyword.toLowerCase().trim();
+            profile.keywords.push(cleanKey);
+            profile.trackerIds[`kw_${cleanKey}`] = t.id;
         });
 
         const chunkArray = (array, size) => {
@@ -164,13 +252,13 @@ async function scanReddit() {
             return chunked;
         };
 
-        console.log(`Scanning ${globalSubredditsToScrape.size} unique Subreddits...`);
-        const subredditBatches = chunkArray(Array.from(globalSubredditsToScrape), 2);
+        console.log(`Scanning Master List of ${GLOBAL_SUBREDDITS.length} Curated Subreddits...`);
+        const subredditBatches = chunkArray(GLOBAL_SUBREDDITS, 3);
         
         for (const batch of subredditBatches) {
             await Promise.all(batch.map(async (sub) => {
                 try {
-                    const response = await fetchWithRetry(`https://www.reddit.com/r/${sub}/new.rss?limit=15`);
+                    const response = await fetchWithRetry(`https://www.reddit.com/r/${sub}/new.rss?limit=30`);
                     const feed = await parser.parseString(response.data);
 
                     for (const post of feed.items) {
@@ -179,7 +267,7 @@ async function scanReddit() {
                         
                         const created_utc = new Date(post.isoDate).getTime() / 1000;
                         const postAgeInMinutes = (Math.floor(Date.now() / 1000) - created_utc) / 60;
-                        if (postAgeInMinutes > 15) continue; 
+                        if (postAgeInMinutes > 20) continue; 
 
                         const title = post.title || '';
                         const selftext = post.contentSnippet || post.content || '';
@@ -190,31 +278,31 @@ async function scanReddit() {
 
                         const usersToEvaluate = [];
 
+                        // 4. THE MATCHER: Check this post against EVERY user's keywords
                         for (const [userId, profile] of userProfiles.entries()) {
-                            if (profile.subreddits.includes(sub)) {
+                            let hasKeywordMatch = false; 
+                            
+                            for (const kw of profile.keywords) {
+                                const stopWords = ['a', 'an', 'the', 'to', 'for', 'of', 'in', 'on', 'is', 'are', 'and', 'with', 'i', 'my'];
+                                const searchTerms = kw.split(' ').filter(term => term.trim() !== '' && !stopWords.includes(term));
                                 
-                                // --- SMART FLEXIBLE KEYWORD MATCHER ---
-                                let hasKeywordMatch = profile.keywords.length === 0; 
-                                
-                                for (const kw of profile.keywords) {
-                                    const stopWords = ['a', 'an', 'the', 'to', 'for', 'of', 'in', 'on', 'is', 'are', 'and', 'with', 'i', 'my'];
-                                    const searchTerms = kw.split(' ').filter(term => term.trim() !== '' && !stopWords.includes(term));
-                                    
-                                    if (searchTerms.length === 0) continue;
+                                if (searchTerms.length === 0) continue;
 
-                                    const matchCount = searchTerms.filter(term => fullTextToSearch.includes(term)).length;
-                                    const requiredMatches = searchTerms.length <= 2 ? searchTerms.length : searchTerms.length - 1;
+                                const matchCount = searchTerms.filter(term => fullTextToSearch.includes(term)).length;
+                                const requiredMatches = searchTerms.length <= 2 ? searchTerms.length : searchTerms.length - 1;
 
-                                    if (matchCount >= requiredMatches) {
-                                        hasKeywordMatch = true;
-                                        break;
-                                    }
+                                if (matchCount >= requiredMatches) {
+                                    hasKeywordMatch = true;
+                                    // Temporarily store the ID of the specific keyword that matched
+                                    profile.matchedTrackerId = profile.trackerIds[`kw_${kw}`];
+                                    break;
                                 }
-
-                                if (hasKeywordMatch) usersToEvaluate.push(profile);
                             }
+
+                            if (hasKeywordMatch) usersToEvaluate.push(profile);
                         }
 
+                        // Evaluate and Save Leads
                         const evaluationPromises = usersToEvaluate.map(async (profile) => {
                             try {
                                 const leadScore = await scorePostForUser(title, truncatedText, profile.agency);
@@ -224,7 +312,7 @@ async function scanReddit() {
                                     
                                     const { error: dbError } = await supabase.from('leads').upsert([{
                                         user_id: profile.agency.id,
-                                        tracker_id: profile.trackerIds[`sub_${sub}`], 
+                                        tracker_id: profile.matchedTrackerId, // Link to the specific keyword tracker!
                                         reddit_post_id: id,
                                         title: title,
                                         body: selftext || '',
@@ -249,10 +337,8 @@ async function scanReddit() {
                                         }
 
                                         // 2. REAL-TIME EMAIL ALERT
-                                        // We use the subreddit and a snippet of the title to make the subject line 100% unique every time to avoid Gmail spam filters.
-                                        if (profile.email) { // Ensure you are pulling their email into the profile object!
+                                        if (profile.email) { 
                                             const cleanTitle = title.substring(0, 40) + "...";
-                                            
                                             try {
                                                 await resend.emails.send({
                                                     from: 'Jacob <alerts@leadrnk.com>', // MUST be a verified domain in Resend
@@ -266,8 +352,6 @@ async function scanReddit() {
                                             }
                                         }
                                     }
-
-                                    if (dbError) console.error(`❌ DATABASE ERROR for ${profile.agency.domain}:`, dbError.message);
                                 }
                             } catch (e) { console.error(`Error scoring ${profile.agency.domain}:`, e.message); }
                         });
@@ -291,7 +375,7 @@ async function scanReddit() {
     }
 }
 
-cron.schedule('*/15 * * * *', () => {
+cron.schedule('*/20 * * * *', () => {
     scanReddit();
 });
 
