@@ -377,14 +377,21 @@ app.post('/api/summarize-post', async (req, res) => {
 });
 
 // --- GUMROAD WEBHOOK (Ping) ---
+// --- GUMROAD WEBHOOK (Ping) ---
 app.post('/api/webhook/gumroad', async (req, res) => {
     try {
         const payload = req.body;
         
+        // 🚨 1. CATCH THE TEST PING 🚨
+        if (payload.test === 'true') {
+            console.log("🟢 SUCCESS: Gumroad Test Ping Received Loud and Clear!");
+            return res.status(200).send('OK');
+        }
+        
         // Gumroad sends the user's email attached to the purchase
         const userEmail = payload.email;
         
-        // We will pass the user ID from your frontend into the Gumroad URL. 
+        // We pass the user ID from your frontend into the Gumroad URL. 
         // Gumroad sends it back to us in the 'url_params' object.
         let userId = null;
         if (payload.url_params) {
@@ -401,11 +408,10 @@ app.post('/api/webhook/gumroad', async (req, res) => {
                 plan: 'freelancer' 
             }).eq('email', userEmail);
             
-            console.log(`❌ Subscription cancelled/failed for: ${userEmail}`);
+            console.log(`🛑 Subscription cancelled/failed for: ${userEmail}`);
         } 
         else {
             // It's a successful purchase or monthly renewal!
-            // Determine the plan based on the price they paid (Gumroad sends price in cents, so 3900 = $39)
             const planBought = parseInt(payload.price) >= 3900 ? 'growth' : 'freelancer'; 
             
             // Try to update using their specific User ID first, fallback to Email if ID is missing
