@@ -41,7 +41,7 @@ async function scorePostForUser(title, text, agency) {
                     Business Pitch/Description: "${agency.description}"
                     Competitors: ${agency.competitor1}, ${agency.competitor2}
 
-                    Score the post from 1 to 10 based on how badly this person needs this exact business's services or if they are showing high buyer intent.
+                    Score the post from 1 to 10 based on how badly this person needs this exact business's services or if they are showing high buyer intent and not trying to sell.
                     
                     Respond ONLY with a valid JSON object: {"score": 8}`
                 },

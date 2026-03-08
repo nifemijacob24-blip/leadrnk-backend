@@ -5,6 +5,13 @@ require('dotenv').config();
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { createClient } = require('@supabase/supabase-js');
 const Parser = require('rss-parser');
+const { Resend } = require('resend');
+
+// Initialize Resend
+if (!process.env.RESEND_API_KEY) {
+    console.error("❌ CRITICAL: Missing Resend API Key!");
+}
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 1. Safe Supabase Init
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
@@ -228,21 +235,35 @@ async function scanReddit() {
 
                                     if (dbError) {
                                         console.error(`❌ DATABASE ERROR for ${profile.agency.domain}:`, dbError.message);
-                                    } else if (profile.webhookUrl) {
-                                        // THE WEBHOOK ALERT PING
-                                        // Sends a format that works perfectly for BOTH Slack and Discord
-                                        const dashboardLink = "https://leadrnk.com/dashboard"; // CHANGE TO YOUR LIVE URL
+                                    } else {
+                                        console.log(`✅ Lead saved for ${profile.agency.domain}`);
                                         
-                                        const alertMessage = `🚨 *New High-Intent Lead Found!*\n*Target:* ${profile.agency.domain}\n*Score:* ${leadScore}/10\n*Subreddit:* r/${sub}\n\n👉 Login to generate an AI pitch: ${dashboardLink}`;
+                                        // 1. WEBHOOK PING (If they have one)
+                                        if (profile.webhookUrl) {
+                                            const dashboardLink = "https://leadrnk.com/dashboard"; 
+                                            const alertMessage = `🚨 *New High-Intent Lead Found!*\n*Target:* ${profile.agency.domain}\n*Score:* ${leadScore}/10\n*Subreddit:* r/${sub}\n\n👉 Login to generate an AI pitch: ${dashboardLink}`;
 
-                                        try {
-                                            await axios.post(profile.webhookUrl, { 
-                                                content: alertMessage, // Discord uses 'content'
-                                                text: alertMessage     // Slack uses 'text'
-                                            });
-                                            console.log(`✉️ Webhook sent to ${profile.agency.domain}`);
-                                        } catch (err) {
-                                            console.log(`⚠️ Webhook failed for ${profile.agency.domain}`);
+                                            try {
+                                                await axios.post(profile.webhookUrl, { content: alertMessage, text: alertMessage });
+                                            } catch (err) { console.log(`⚠️ Webhook failed.`); }
+                                        }
+
+                                        // 2. REAL-TIME EMAIL ALERT
+                                        // We use the subreddit and a snippet of the title to make the subject line 100% unique every time to avoid Gmail spam filters.
+                                        if (profile.email) { // Ensure you are pulling their email into the profile object!
+                                            const cleanTitle = title.substring(0, 40) + "...";
+                                            
+                                            try {
+                                                await resend.emails.send({
+                                                    from: 'Jacob <alerts@leadrnk.com>', // MUST be a verified domain in Resend
+                                                    to: profile.email,
+                                                    subject: `Reddit Lead (r/${sub}): ${cleanTitle}`,
+                                                    text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://leadrnk.vercel.app/dashboard\n\n- Leadrnk Automation`,
+                                                });
+                                                console.log(`📧 Email alert sent to ${profile.email}`);
+                                            } catch (emailErr) {
+                                                console.error(`⚠️ Email failed to send:`, emailErr.message);
+                                            }
                                         }
                                     }
 
