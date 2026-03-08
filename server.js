@@ -317,7 +317,7 @@ app.post('/api/generate-reply', async (req, res) => {
             Write a highly valuable, thoughtful Reddit comment in response. 
             
             CRITICAL RULES:
-            1. NEVER greet tackle the question straight away or use "hey there"
+            1. NEVER greet tackle the question straight away or use "hey there" and never use "-"
             2. Tone: Be casual, conversational, and helpful. Use formatting like short paragraphs or bullet points if needed. Do NOT sound corporate or salesy. 
             3. Value First: Provide 1 or 2 pieces of actual, actionable advice related to their specific problem.
             4. The "Soft Flex": Subtly weave in your expertise based on the WEBSITE CONTEXT above. Use a phrase similar to "In my experience running an agency in this space..." or "We recently helped a client with this exact issue...".
@@ -387,43 +387,49 @@ app.post('/api/webhook/gumroad', async (req, res) => {
     try {
         const payload = req.body || {};
         
-        // 🚨 THE FIX: Only stop early if it's a test ping AND there is no email attached.
-        // If there is an email, it means it is a Test Checkout, and we SHOULD update the database!
+        // Only stop early if it's a test ping AND there is no email attached.
         if ((payload.test === 'true' || payload.test === true) && !payload.email) {
             console.log("🟢 SUCCESS: Gumroad Test Ping (from Settings) confirmed!");
             return res.status(200).send('OK');
         }
         
         const userEmail = payload.email;
-        let userId = null;
         
-        if (payload.url_params) {
+        // 🚨 THE MAGIC FIX: Aggressively grab the userId we passed from the frontend URL
+        // Gumroad attaches our custom URL parameters directly to the payload body
+        let userId = payload.userid || payload.userId || null;
+        
+        // Sometimes Gumroad nests it inside url_params, so we check there too just in case!
+        if (!userId && payload.url_params) {
             try {
-                const params = JSON.parse(payload.url_params);
-                userId = params.userid;
+                const params = typeof payload.url_params === 'string' ? JSON.parse(payload.url_params) : payload.url_params;
+                userId = params.userid || params.userId;
             } catch (e) {}
         }
         
         // Check if the user cancelled
         if (payload.refunded === 'true' || payload.resource_name === 'cancellation' || payload.resource_name === 'subscription_ended') {
-            await supabase.from('agencies').update({ 
-                is_paid: false, 
-                plan: 'freelancer' 
-            }).eq('email', userEmail);
-            
-            console.log(`🛑 Subscription cancelled/failed for: ${userEmail}`);
+            // Try to cancel by ID first, fallback to email
+            if (userId) {
+                await supabase.from('agencies').update({ is_paid: false, plan: 'freelancer' }).eq('id', userId);
+            } else {
+                await supabase.from('agencies').update({ is_paid: false, plan: 'freelancer' }).eq('email', userEmail);
+            }
+            console.log(`🛑 Subscription cancelled/failed for ID: ${userId} (Email: ${userEmail})`);
         } 
         else if (userEmail) { 
             // It's a purchase! (Gumroad sends price in cents. 3900 = $39)
             const planBought = parseInt(payload.price) >= 3900 ? 'growth' : 'freelancer'; 
             
             try {
+                // 🚨 ALWAYS UPGRADE BY USER ID FIRST! This makes the email irrelevant!
                 if (userId) {
                      await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('id', userId);
+                     console.log(`✅ Sub active using EXACT USER ID: ${userId} (${planBought} plan)`);
                 } else {
                      await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('email', userEmail);
+                     console.log(`✅ Sub active using EMAIL FALLBACK: ${userEmail} (${planBought} plan)`);
                 }
-                console.log(`✅ Subscription active for: ${userEmail} (${planBought} plan) [Test Mode: ${payload.test || false}]`);
             } catch (dbError) {
                 console.error("❌ SUPABASE ERROR updating user:", dbError.message);
             }
