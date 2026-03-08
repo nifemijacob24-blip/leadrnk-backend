@@ -253,7 +253,7 @@ async function scanReddit() {
         };
 
         console.log(`Scanning Master List of ${GLOBAL_SUBREDDITS.length} Curated Subreddits...`);
-        const subredditBatches = chunkArray(GLOBAL_SUBREDDITS, 3);
+        const subredditBatches = chunkArray(GLOBAL_SUBREDDITS, 2);
         
         for (const batch of subredditBatches) {
             await Promise.all(batch.map(async (sub) => {
