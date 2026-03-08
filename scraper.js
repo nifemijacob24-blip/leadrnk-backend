@@ -258,7 +258,7 @@ async function scanReddit() {
         for (const batch of subredditBatches) {
             await Promise.all(batch.map(async (sub) => {
                 try {
-                    const response = await fetchWithRetry(`https://www.reddit.com/r/${sub}/new.rss?limit=30`);
+                    const response = await fetchWithRetry(`https://www.reddit.com/r/${sub}/new.rss?limit=5`);
                     const feed = await parser.parseString(response.data);
 
                     for (const post of feed.items) {
@@ -267,7 +267,7 @@ async function scanReddit() {
                         
                         const created_utc = new Date(post.isoDate).getTime() / 1000;
                         const postAgeInMinutes = (Math.floor(Date.now() / 1000) - created_utc) / 60;
-                        if (postAgeInMinutes > 20) continue; 
+                        if (postAgeInMinutes > 15) continue; 
 
                         const title = post.title || '';
                         const selftext = post.contentSnippet || post.content || '';
@@ -341,7 +341,7 @@ async function scanReddit() {
                                             const cleanTitle = title.substring(0, 40) + "...";
                                             try {
                                                 await resend.emails.send({
-                                                    from: 'Jacob <alerts@leadrnk.com>', // MUST be a verified domain in Resend
+                                                    from: 'Jacob from leadrnk <alerts@leadrnk.com>', // MUST be a verified domain in Resend
                                                     to: profile.email,
                                                     subject: `Reddit Lead (r/${sub}): ${cleanTitle}`,
                                                     text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://leadrnk.vercel.app/dashboard\n\n- Leadrnk Automation`,
@@ -375,7 +375,7 @@ async function scanReddit() {
     }
 }
 
-cron.schedule('*/20 * * * *', () => {
+cron.schedule('*/15 * * * *', () => {
     scanReddit();
 });
 

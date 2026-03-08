@@ -10,6 +10,8 @@ const Parser = require('rss-parser');
 const app = express();
 
 app.use(express.json());
+// Allows Express to read Gumroad's Webhook payloads
+app.use(express.urlencoded({ extended: true }));
 
 // Allow your Vercel frontend to talk to this backend
 app.use(cors({
@@ -374,87 +376,54 @@ app.post('/api/summarize-post', async (req, res) => {
     }
 });
 
-// --- FLUTTERWAVE WEBHOOK (Recurring Billing) ---
-app.post('/api/webhook/flutterwave', async (req, res) => {
-    // 1. Verify the request actually came from Flutterwave
-    const secretHash = process.env.FLW_WEBHOOK_SECRET; 
-    const signature = req.headers['verif-hash'];
-    
-    if (!signature || signature !== secretHash) {
-        return res.status(401).end();
-    }
-    
-    const payload = req.body;
-    
-    // 2. Extract the User ID from the custom tx_ref we built
-    const txRef = payload.data?.tx_ref || '';
-    const parts = txRef.split('_');
-    const userId = parts[2]; // Grabs the user ID from "leadrnk_growth_USERID_12345"
-
-    if (!userId) return res.status(200).end(); 
-
+// --- GUMROAD WEBHOOK (Ping) ---
+app.post('/api/webhook/gumroad', async (req, res) => {
     try {
-        if (payload.event === 'charge.completed' && payload.data.status === 'successful') {
-            // Monthly renewal succeeded! Keep their account active.
-            await supabase.from('agencies').update({ is_paid: true }).eq('id', userId);
-            console.log(`♻️ Auto-renewal successful for user: ${userId}`);
-        } 
-        else if (payload.event === 'charge.failed') {
-            // Card declined or expired! Revoke AI access.
-            await supabase.from('agencies').update({ is_paid: false }).eq('id', userId);
-            console.log(`❌ Auto-renewal failed for user: ${userId}. Access revoked.`);
-        }
-    } catch (err) {
-        console.error('Webhook database error:', err);
-    }
-    
-    // Always return 200 OK so Flutterwave stops retrying the ping
-    res.status(200).end(); 
-});
-
-// --- CANCEL SUBSCRIPTION ROUTE (Fully Automated) ---
-app.post('/api/cancel-subscription', async (req, res) => {
-    // We now expect the frontend to pass the user's email too
-    const { userId, email } = req.body; 
-    
-    try {
-        const flwSecret = process.env.FLW_SECRET_KEY; // Your Flutterwave Secret Key
+        const payload = req.body;
         
-        if (!flwSecret) {
-            console.error('Missing FLW_SECRET_KEY in environment variables.');
-            return res.status(500).json({ error: 'Server configuration error' });
+        // Gumroad sends the user's email attached to the purchase
+        const userEmail = payload.email;
+        
+        // We will pass the user ID from your frontend into the Gumroad URL. 
+        // Gumroad sends it back to us in the 'url_params' object.
+        let userId = null;
+        if (payload.url_params) {
+            try {
+                const params = JSON.parse(payload.url_params);
+                userId = params.userid;
+            } catch (e) {}
         }
-
-        // 1. Ask Flutterwave for all subscriptions attached to this user's email
-        const subsResponse = await axios.get(`https://api.flutterwave.com/v3/subscriptions?email=${email}`, {
-            headers: { Authorization: `Bearer ${flwSecret}` }
-        });
-
-        const subscriptions = subsResponse.data.data || [];
-
-        // 2. Loop through and cancel any that are currently active
-        for (const sub of subscriptions) {
-            if (sub.status === 'active') {
-                await axios.put(`https://api.flutterwave.com/v3/subscriptions/${sub.id}/cancel`, {}, {
-                    headers: { Authorization: `Bearer ${flwSecret}` }
-                });
-                console.log(`🛑 Successfully cancelled Flutterwave sub ${sub.id} for ${email}`);
+        
+        // Check if the user cancelled or if their card failed permanently
+        if (payload.refunded === 'true' || payload.resource_name === 'cancellation' || payload.resource_name === 'subscription_ended') {
+            await supabase.from('agencies').update({ 
+                is_paid: false, 
+                plan: 'freelancer' 
+            }).eq('email', userEmail);
+            
+            console.log(`❌ Subscription cancelled/failed for: ${userEmail}`);
+        } 
+        else {
+            // It's a successful purchase or monthly renewal!
+            // Determine the plan based on the price they paid (Gumroad sends price in cents, so 3900 = $39)
+            const planBought = parseInt(payload.price) >= 3900 ? 'growth' : 'freelancer'; 
+            
+            // Try to update using their specific User ID first, fallback to Email if ID is missing
+            if (userId) {
+                 await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('id', userId);
+            } else {
+                 await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('email', userEmail);
             }
+            console.log(`✅ Subscription active for: ${userEmail} (${planBought} plan)`);
         }
 
-        // 3. Instantly revoke AI access and downgrade them to the base free tier in your app
-        await supabase.from('agencies').update({ 
-            is_paid: false,
-            plan: 'freelancer' 
-        }).eq('id', userId);
-
-        res.json({ success: true });
+        // Always return 200 OK so Gumroad knows we got the message
+        res.status(200).send('OK');
     } catch (err) {
-        console.error('Cancellation API error:', err.response?.data || err.message);
-        res.status(500).json({ error: 'Failed to cancel subscription on Flutterwave.' });
+        console.error('Gumroad Webhook Error:', err);
+        res.status(500).send('Error');
     }
 });
-
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Leadrnk Backend running on http://localhost:${PORT}`);
