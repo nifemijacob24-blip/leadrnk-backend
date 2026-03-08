@@ -378,22 +378,26 @@ app.post('/api/summarize-post', async (req, res) => {
 
 // --- GUMROAD WEBHOOK (Ping) ---
 // --- GUMROAD WEBHOOK (Ping) ---
+// --- GUMROAD WEBHOOK (Ping) ---
 app.post('/api/webhook/gumroad', async (req, res) => {
+    // 🚨 DIAGNOSTIC LOGS: This will fire the second ANY message hits this URL
+    console.log("\n====================================");
+    console.log("🔔 GUMROAD WEBHOOK HIT!");
+    console.log("RAW BODY RECEIVED:", req.body);
+    console.log("====================================\n");
+
     try {
         const payload = req.body;
         
-        // 🚨 1. CATCH THE TEST PING 🚨
-        if (payload.test === 'true') {
-            console.log("🟢 SUCCESS: Gumroad Test Ping Received Loud and Clear!");
+        // Catch test ping (Checking both string and boolean just in case!)
+        if (payload.test === 'true' || payload.test === true) {
+            console.log("🟢 SUCCESS: Gumroad Test Ping confirmed!");
             return res.status(200).send('OK');
         }
         
-        // Gumroad sends the user's email attached to the purchase
         const userEmail = payload.email;
-        
-        // We pass the user ID from your frontend into the Gumroad URL. 
-        // Gumroad sends it back to us in the 'url_params' object.
         let userId = null;
+        
         if (payload.url_params) {
             try {
                 const params = JSON.parse(payload.url_params);
@@ -401,7 +405,7 @@ app.post('/api/webhook/gumroad', async (req, res) => {
             } catch (e) {}
         }
         
-        // Check if the user cancelled or if their card failed permanently
+        // Check if the user cancelled
         if (payload.refunded === 'true' || payload.resource_name === 'cancellation' || payload.resource_name === 'subscription_ended') {
             await supabase.from('agencies').update({ 
                 is_paid: false, 
@@ -410,11 +414,9 @@ app.post('/api/webhook/gumroad', async (req, res) => {
             
             console.log(`🛑 Subscription cancelled/failed for: ${userEmail}`);
         } 
-        else {
-            // It's a successful purchase or monthly renewal!
+        else if (userEmail) { // Ensure it's a real purchase with an email
             const planBought = parseInt(payload.price) >= 3900 ? 'growth' : 'freelancer'; 
             
-            // Try to update using their specific User ID first, fallback to Email if ID is missing
             if (userId) {
                  await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('id', userId);
             } else {
@@ -423,7 +425,6 @@ app.post('/api/webhook/gumroad', async (req, res) => {
             console.log(`✅ Subscription active for: ${userEmail} (${planBought} plan)`);
         }
 
-        // Always return 200 OK so Gumroad knows we got the message
         res.status(200).send('OK');
     } catch (err) {
         console.error('Gumroad Webhook Error:', err);

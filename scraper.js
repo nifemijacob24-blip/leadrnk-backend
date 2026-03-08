@@ -173,7 +173,7 @@ async function fetchWithRetry(url, maxRetries = 3) {
 async function scorePostForUser(title, text, agency) {
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o mini", 
+            model: "gpt-4o-mini", 
             messages: [
                 {
                     role: "system",
