@@ -377,19 +377,17 @@ app.post('/api/summarize-post', async (req, res) => {
 });
 
 // --- GUMROAD WEBHOOK (Ping) ---
-// --- GUMROAD WEBHOOK (Ping) ---
-// --- GUMROAD WEBHOOK (Ping) ---
 app.post('/api/webhook/gumroad', async (req, res) => {
-    // 🚨 DIAGNOSTIC LOGS: This will fire the second ANY message hits this URL
     console.log("\n====================================");
     console.log("🔔 GUMROAD WEBHOOK HIT!");
     console.log("RAW BODY RECEIVED:", req.body);
     console.log("====================================\n");
 
     try {
-        const payload = req.body;
+        // 🚨 SAFETY NET: If the body is completely empty, default to an empty object so it doesn't crash!
+        const payload = req.body || {};
         
-        // Catch test ping (Checking both string and boolean just in case!)
+        // Catch test ping 
         if (payload.test === 'true' || payload.test === true) {
             console.log("🟢 SUCCESS: Gumroad Test Ping confirmed!");
             return res.status(200).send('OK');
@@ -414,20 +412,24 @@ app.post('/api/webhook/gumroad', async (req, res) => {
             
             console.log(`🛑 Subscription cancelled/failed for: ${userEmail}`);
         } 
-        else if (userEmail) { // Ensure it's a real purchase with an email
+        else if (userEmail) { 
             const planBought = parseInt(payload.price) >= 3900 ? 'growth' : 'freelancer'; 
             
-            if (userId) {
-                 await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('id', userId);
-            } else {
-                 await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('email', userEmail);
+            try {
+                if (userId) {
+                     await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('id', userId);
+                } else {
+                     await supabase.from('agencies').update({ is_paid: true, plan: planBought }).eq('email', userEmail);
+                }
+                console.log(`✅ Subscription active for: ${userEmail} (${planBought} plan)`);
+            } catch (dbError) {
+                console.error("❌ SUPABASE ERROR updating user:", dbError.message);
             }
-            console.log(`✅ Subscription active for: ${userEmail} (${planBought} plan)`);
         }
 
         res.status(200).send('OK');
     } catch (err) {
-        console.error('Gumroad Webhook Error:', err);
+        console.error('❌ FATAL GUMROAD WEBHOOK ERROR:', err.message);
         res.status(500).send('Error');
     }
 });
