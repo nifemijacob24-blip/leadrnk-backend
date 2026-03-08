@@ -236,10 +236,14 @@ async function scanReddit() {
             });
         });
 
-        // Map ONLY keywords to users
+        // Map ONLY keywords to users (WITH PLAN LIMITS)
         trackers.forEach(t => {
             const profile = userProfiles.get(t.user_id);
             if (!profile || !t.keyword) return;
+
+            // 🚨 THE ENFORCER: Check their plan limit before adding the keyword to the scraper
+            const maxAllowed = profile.agency.plan === 'growth' ? 40 : 20;
+            if (profile.keywords.length >= maxAllowed) return; // Stop adding keywords for this user!
 
             const cleanKey = t.keyword.toLowerCase().trim();
             profile.keywords.push(cleanKey);
