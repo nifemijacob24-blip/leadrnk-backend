@@ -318,6 +318,7 @@ app.post('/api/generate-reply', async (req, res) => {
             Write a highly valuable, thoughtful Reddit comment in response. 
             
             CRITICAL RULES:
+            1. Never use a dash like "-" in any part of comment
             1. NEVER greet tackle the question straight away or use "hey there" and never use "-" in comment generated
             2. Tone: Be casual, conversational, and helpful. Use formatting like short paragraphs or bullet points if needed. Do NOT sound corporate or salesy. 
             3. Value First: Provide 1 or 2 pieces of actual, actionable advice related to their specific problem.
