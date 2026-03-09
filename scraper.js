@@ -334,7 +334,7 @@ async function scanReddit() {
                                         
                                         // 1. WEBHOOK PING 
                                         if (profile.webhookUrl) {
-                                            const dashboardLink = "https://sublucker.com/dashboard"; 
+                                            const dashboardLink = "https://sublurker.com/dashboard"; 
                                             const alertMessage = `🚨 *New High-Intent Lead Found!*\n*Target:* ${profile.agency.domain}\n*Score:* ${leadScore}/10\n*Subreddit:* r/${sub}\n\n👉 Login to generate an AI pitch: ${dashboardLink}`;
 
                                             try {
@@ -347,10 +347,10 @@ async function scanReddit() {
                                             const cleanTitle = title.substring(0, 40) + "...";
                                             try {
                                                 await resend.emails.send({
-                                                    from: 'Jacob <alerts@sublucker.com>',
+                                                    from: 'Jacob <alerts@sublurker.com>',
                                                     to: profile.email,
                                                     subject: `Reddit Lead (r/${sub}): ${cleanTitle}`,
-                                                    text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://sublucker.com/dashboard\n\n- Sublucker Automation`,
+                                                    text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://sublurker.com/dashboard\n\n- sublurker Automation`,
                                                 });
                                                 console.log(`📧 Email alert sent to ${profile.email}`);
                                             } catch (emailErr) {

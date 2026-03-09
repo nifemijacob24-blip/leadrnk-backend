@@ -15,7 +15,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Allow your Vercel frontend to talk to this backend
 app.use(cors({
-    origin: ['https://www.sublucker.com', 'http://localhost:5173'], // Add your exact Vercel URL here
+    origin: ['https://www.sublurker.com', 'http://localhost:5173'], // Add your exact Vercel URL here
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
 }));
