@@ -349,7 +349,7 @@ async function scanReddit() {
                                                 await resend.emails.send({
                                                     from: 'Jacob <alerts@sublurker.com>',
                                                     to: profile.email,
-                                                    subject: `Reddit Lead (r/${sub}): ${cleanTitle}`,
+                                                    subject: `Reddit Lead for ${profile.agency.domain}`,
                                                     text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://sublurker.com/dashboard\n\n- sublurker Automation`,
                                                 });
                                                 console.log(`📧 Email alert sent to ${profile.email}`);

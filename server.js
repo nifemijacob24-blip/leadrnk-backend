@@ -321,7 +321,7 @@ app.post('/api/generate-reply', async (req, res) => {
             1. NEVER greet tackle the question straight away or use "hey there" and never use "-" in comment generated
             2. Tone: Be casual, conversational, and helpful. Use formatting like short paragraphs or bullet points if needed. Do NOT sound corporate or salesy. 
             3. Value First: Provide 1 or 2 pieces of actual, actionable advice related to their specific problem.
-            4. The "Soft Flex": Subtly weave in your expertise based on the WEBSITE CONTEXT above. Use a phrase similar to "In my experience running an agency in this space..." or "We recently helped a client with this exact issue...".
+            4. The "Soft Flex": Subtly weave in your expertise based on the WEBSITE CONTEXT above. Use a phrase similar to "In my experience running an agency in this space..." or "We recently helped a client with this exact issue..."etc, say the domain(like "leadrnk") no links in comment if it feels right.
             5. No Hard Selling: Do NOT tell them to DM you. Do NOT tell them to visit your website. End the comment with an open-ended question to start a conversation, or a simple "Hope this helps!".
             6. Length: Keep it between 3 to 5 short paragraphs.
             
