@@ -15,7 +15,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Allow your Vercel frontend to talk to this backend
 app.use(cors({
-    origin: ['https://www.leadrnk.com', 'http://localhost:5173'], // Add your exact Vercel URL here
+    origin: ['https://www.sublucker.com', 'http://localhost:5173'], // Add your exact Vercel URL here
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
 }));
@@ -129,8 +129,8 @@ async function populateInitialFeed(userId, agency, generatedTrackers) {
                         const leadScore = await scorePostForUser(title, truncatedText, profile.agency);
                         
                         if (leadScore >= 6) {
-                            console.log(`✅ [Historical] Found lead for ${agency.domain}! Score: ${leadScore}/10`);
-                            await supabase.from('leads').upsert([{
+                            // Inside server.js -> populateInitialFeed function:
+                            const { error: dbError } = await supabase.from('leads').upsert([{
                                 user_id: userId,
                                 tracker_id: profile.trackerIds[`sub_${sub}`], 
                                 reddit_post_id: post.id || post.guid,
@@ -138,8 +138,9 @@ async function populateInitialFeed(userId, agency, generatedTrackers) {
                                 body: selftext || '',
                                 subreddit: `r/${sub}`,
                                 url: post.link,
-                                posted_at: new Date(post.isoDate).toISOString() // Keeping your accurate time fix!
+                                posted_at: new Date(post.isoDate).toISOString() 
                             }], { onConflict: 'user_id, reddit_post_id', ignoreDuplicates: true });
+                            // (No .select() needed here since we don't send emails during historical scan, just ensure the SQL constraint is applied!);
                         }
                     }
                 }

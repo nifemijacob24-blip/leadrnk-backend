@@ -183,7 +183,8 @@ async function scorePostForUser(title, text, agency) {
                     Business Pitch/Description: "${agency.description}"
                     Competitors: ${agency.competitor1}, ${agency.competitor2}
 
-                    Score the post from 1 to 10 based on how badly this person needs this exact business's services or if they are showing high buyer intent.
+
+                    Score the post from 1 to 10 based on how badly this person needs this exact business's services or if they are showing high buyer intent and not trying to sell something they must be in need of my help to get 6 and above.
                     
                     Respond ONLY with a valid JSON object: {"score": 8}`
                 },
@@ -312,27 +313,28 @@ async function scanReddit() {
                                 const leadScore = await scorePostForUser(title, truncatedText, profile.agency);
                                 
                                 if (leadScore >= 6) {
-                                    console.log(`✅ [${profile.agency.domain}] Local Match + AI Score ${leadScore}/10! Saving...`);
-                                    
-                                    const { error: dbError } = await supabase.from('leads').upsert([{
+                                    // 🚨 NEW FIX: Add .select() to get the result back
+                                    const { data: insertedLead, error: dbError } = await supabase.from('leads').upsert([{
                                         user_id: profile.agency.id,
-                                        tracker_id: profile.matchedTrackerId, // Link to the specific keyword tracker!
+                                        tracker_id: profile.matchedTrackerId, 
                                         reddit_post_id: id,
                                         title: title,
                                         body: selftext || '',
                                         subreddit: `r/${sub}`,
                                         url: permalink,
                                         posted_at: new Date(post.isoDate).toISOString()
-                                    }], { onConflict: 'user_id, reddit_post_id', ignoreDuplicates: true });
+                                    }], { onConflict: 'user_id, reddit_post_id', ignoreDuplicates: true }).select();
 
                                     if (dbError) {
                                         console.error(`❌ DATABASE ERROR for ${profile.agency.domain}:`, dbError.message);
-                                    } else {
-                                        console.log(`✅ Lead saved for ${profile.agency.domain}`);
+                                    } 
+                                    // 🚨 THE SHIELD: Only send emails if Supabase confirms it is a BRAND NEW row!
+                                    else if (insertedLead && insertedLead.length > 0) {
+                                        console.log(`✅ NEW Lead saved for ${profile.agency.domain}`);
                                         
-                                        // 1. WEBHOOK PING (If they have one)
+                                        // 1. WEBHOOK PING 
                                         if (profile.webhookUrl) {
-                                            const dashboardLink = "https://leadrnk.com/dashboard"; 
+                                            const dashboardLink = "https://sublucker.com/dashboard"; 
                                             const alertMessage = `🚨 *New High-Intent Lead Found!*\n*Target:* ${profile.agency.domain}\n*Score:* ${leadScore}/10\n*Subreddit:* r/${sub}\n\n👉 Login to generate an AI pitch: ${dashboardLink}`;
 
                                             try {
@@ -345,16 +347,19 @@ async function scanReddit() {
                                             const cleanTitle = title.substring(0, 40) + "...";
                                             try {
                                                 await resend.emails.send({
-                                                    from: 'Jacob from leadrnk <alerts@leadrnk.com>', // MUST be a verified domain in Resend
+                                                    from: 'Jacob <alerts@sublucker.com>',
                                                     to: profile.email,
-                                                    subject: `Reddit Lead Found For ${profile.agency.domain}`,
-                                                    text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://leadrnk.vercel.app/dashboard\n\n- Leadrnk Automation`,
+                                                    subject: `Reddit Lead (r/${sub}): ${cleanTitle}`,
+                                                    text: `We just found a highly qualified lead for ${profile.agency.domain}.\n\nSubreddit: r/${sub}\nIntent Score: ${leadScore}/10\nPost: ${title}\n\nLog into your dashboard to read the full post and use the AI Reply Agent to craft your pitch:\nhttps://sublucker.com/dashboard\n\n- Sublucker Automation`,
                                                 });
                                                 console.log(`📧 Email alert sent to ${profile.email}`);
                                             } catch (emailErr) {
                                                 console.error(`⚠️ Email failed to send:`, emailErr.message);
                                             }
                                         }
+                                    } else {
+                                        // It was a duplicate, silently ignore it!
+                                        console.log(`🔄 Ignored duplicate post for ${profile.agency.domain}`);
                                     }
                                 }
                             } catch (e) { console.error(`Error scoring ${profile.agency.domain}:`, e.message); }
